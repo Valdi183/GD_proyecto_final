@@ -191,10 +191,10 @@ def d05_insertar_product29_central_product(conn):
     en central_product si todavía no existe.
 
     Decisión D05:
-    - category_id = 1 (Diagnóstico — "Productos de medición y monitoreo")
+    - category_id = resuelto dinámicamente por nombre ('Diagnóstico')
     - brand_id    = brand de Xiaomi si existe en la tabla brand, NULL si no
-    - unit_cost   = mediana de los productos de category_id=1;
-                    fallback: mediana global si la categoría tuviera < 1 producto
+    - unit_cost   = mediana de los productos de la misma categoría;
+                    fallback: mediana global
     - unit_price  = 19,99 (precio de la tabla product)
     """
     log("D05 — Comprobando si product_id=29 existe en central_product...")
@@ -207,23 +207,36 @@ def d05_insertar_product29_central_product(conn):
         log("D05 — product_id=29 ya está en central_product. Nada que hacer.")
         return
 
-    # Mediana de unit_cost para category_id=1, con fallback a mediana global
+    # Resolver category_id por nombre para evitar dependencia de un ID concreto
+    cat_id = conn.execute(text("""
+        SELECT category_id FROM public.category
+        WHERE LOWER(name) LIKE '%diagn%'
+        LIMIT 1
+    """)).scalar()
+    if cat_id is None:
+        raise RuntimeError(
+            "D05: no se encontró la categoría 'Diagnóstico' en public.category. "
+            "Verifica que el dump se restauró correctamente."
+        )
+    log(f"D05 — category_id resuelto: {cat_id} (Diagnóstico)")
+
+    # Mediana de unit_cost para la categoría resuelta, con fallback a mediana global
     unit_cost = conn.execute(text("""
         SELECT COALESCE(
             (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY unit_cost)
              FROM public.central_product
-             WHERE category_id = 1),
+             WHERE category_id = :cat_id),
             (SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY unit_cost)
              FROM public.central_product)
         )
-    """)).scalar()
+    """), {"cat_id": cat_id}).scalar()
 
     # brand_id de Xiaomi (NULL si no existe en la tabla brand)
     brand_id = conn.execute(
         text("SELECT brand_id FROM public.brand WHERE LOWER(name) = 'xiaomi' LIMIT 1")
     ).scalar()
 
-    log(f"D05 — unit_cost imputado (mediana categoría 1): {unit_cost:.4f}")
+    log(f"D05 — unit_cost imputado (mediana categoría {cat_id}): {unit_cost:.4f}")
     log(f"D05 — brand_id Xiaomi: {brand_id if brand_id else 'NULL (no encontrado en brand)'}")
 
     conn.execute(text("""
@@ -232,7 +245,7 @@ def d05_insertar_product29_central_product(conn):
         SELECT
             29,
             p.name,
-            1,
+            :cat_id,
             :brand_id,
             NULL,
             NULL,
@@ -240,9 +253,9 @@ def d05_insertar_product29_central_product(conn):
             p.price
         FROM public.product p
         WHERE p.product_id = 29
-    """), {"brand_id": brand_id, "unit_cost": unit_cost})
+    """), {"cat_id": cat_id, "brand_id": brand_id, "unit_cost": unit_cost})
 
-    # Verificación
+    # Verificación de lo insertado
     insertado = conn.execute(text("""
         SELECT product_id, name, category_id, brand_id, unit_cost, unit_price
         FROM public.central_product WHERE product_id = 29
