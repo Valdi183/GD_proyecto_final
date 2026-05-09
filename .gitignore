@@ -1,5 +1,12 @@
+# Credenciales — nunca al repo
 .env
+
+# Python compilado
 __pycache__/
 *.pyc
-reports/
+
+# Artefactos generados por el ETL (se regeneran con run_etl.py)
+data/processed/
+
+# Jupyter temporales
 .ipynb_checkpoints/
