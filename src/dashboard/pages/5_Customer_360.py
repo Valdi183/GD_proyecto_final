@@ -1,5 +1,7 @@
 """
-3_Customer_360.py — Página 3: Perfil individual de cliente.
+5_Customer_360.py — Página 5: Perfil individual de cliente.
+(Renombrado y mejorado desde 3_Customer_360.py)
+Mejoras: botón 🎲 cliente aleatorio + percentiles en comparativa de segmento.
 """
 
 import sys
@@ -25,16 +27,33 @@ st.caption("Perfil individual de cliente · búsqueda por ID o email")
 
 df = load_data()
 
-# ── Buscador ──────────────────────────────────────────────────────────────────
-col_modo, col_input = st.columns([1, 3])
+# ── Buscador + botón aleatorio ────────────────────────────────────────────────
+if "rand_cid" not in st.session_state:
+    st.session_state["rand_cid"] = ""
+
+col_modo, col_input, col_btn = st.columns([1, 3, 0.8])
+
 with col_modo:
     modo = st.radio("Buscar por", ["customer_id", "email"], horizontal=False)
+
+with col_btn:
+    st.write("")
+    st.write("")
+    if st.button("🎲 Aleatorio", use_container_width=True,
+                 help="Carga un cliente al azar"):
+        rid = int(df["customer_id"].sample(1).iloc[0])
+        st.session_state["rand_cid"] = str(rid)
+        st.rerun()
+
 with col_input:
     placeholder = "Ej. 1234" if modo == "customer_id" else "Ej. cliente@email.com"
+    label       = "customer_id" if modo == "customer_id" else "Email del cliente"
     query_raw   = st.text_input(
-        "customer_id" if modo == "customer_id" else "Email del cliente",
+        label,
+        value=st.session_state["rand_cid"],
         placeholder=placeholder,
     )
+    st.session_state["rand_cid"] = query_raw
 
 if not query_raw.strip():
     st.info("Introduce un customer_id o email para ver el perfil del cliente.")
@@ -61,6 +80,7 @@ cluster_data = df[
     (df["cluster_label"] == cluster_name) &
     (df["customer_id"] != cliente["customer_id"])
 ]
+cluster_mask = df["cluster_label"] == cluster_name
 
 # ── Tarjeta de identidad + KPIs ───────────────────────────────────────────────
 st.divider()
@@ -83,14 +103,14 @@ with col_id:
 with col_kpis:
     k1, k2, k3 = st.columns(3)
     k1.metric(
-        "CLTV",
+        "Valor del cliente",
         fmt_eur(float(cliente["cltv"])),
         help="Margen neto histórico ajustado por devoluciones.",
     )
     k2.metric(
-        "AOV",
+        "Ticket medio",
         fmt_eur(float(cliente["aov"])),
-        help="Valor medio por pedido (ingresos brutos / nº pedidos).",
+        help="Importe medio por pedido (ingresos brutos / nº pedidos).",
     )
     k3.metric("Pedidos", int(cliente["n_pedidos"]))
 
@@ -106,8 +126,8 @@ with col_kpis:
         help="Ítems devueltos / ítems vendidos.",
     )
     k6.metric(
-        "Recency",
-        f"{int(cliente['recency_dias'])} días",
+        "Último pedido",
+        f"hace {int(cliente['recency_dias'])} días",
         help="Días transcurridos desde la última compra hasta el cierre del dataset.",
     )
 
@@ -117,20 +137,27 @@ st.divider()
 st.subheader(f"Comparativa con su segmento: {cluster_name}")
 
 features_map = {
-    "aov":          "AOV",
-    "margin_rate":  "Margen Rate",
-    "meses_activo": "Meses Activo",
-    "return_rate":  "Tasa Devolución",
+    "aov":          "Ticket medio",
+    "margin_rate":  "Margen",
+    "meses_activo": "Tiempo activo",
+    "return_rate":  "Tasa de devolución",
 }
+
 comp_rows = []
 for feat, label in features_map.items():
     val      = float(cliente[feat])
     mean_val = float(cluster_data[feat].mean())
     pct_diff = (val / mean_val - 1) * 100 if mean_val != 0 else 0.0
+
+    vals_cluster = df[cluster_mask][feat].dropna()
+    n_cluster    = len(vals_cluster)
+    percentil    = int(round((vals_cluster < val).sum() / n_cluster * 100)) if n_cluster > 0 else 0
+
     comp_rows.append({
-        "Feature":        label,
-        "Diferencia (%)": round(pct_diff, 1),
-        "Dirección":      "Por encima" if pct_diff >= 0 else "Por debajo",
+        "Variable":        label,
+        "Diferencia (%)":  round(pct_diff, 1),
+        "Dirección":       "Por encima" if pct_diff >= 0 else "Por debajo",
+        "Percentil":       percentil,
     })
 
 comp_df = pd.DataFrame(comp_rows)
@@ -138,11 +165,11 @@ comp_df = pd.DataFrame(comp_rows)
 fig_comp = px.bar(
     comp_df,
     x="Diferencia (%)",
-    y="Feature",
+    y="Variable",
     orientation="h",
     color="Dirección",
     color_discrete_map={"Por encima": "#2ECC71", "Por debajo": "#E74C3C"},
-    labels={"Diferencia (%)": "% vs media del segmento", "Feature": ""},
+    labels={"Diferencia (%)": "% vs media del segmento", "Variable": ""},
     text=comp_df["Diferencia (%)"].apply(lambda v: f"{v:+.1f}%"),
 )
 fig_comp.add_vline(x=0, line_color="#7F8C8D", line_width=1.5)
@@ -153,11 +180,18 @@ fig_comp.update_layout(
 )
 fig_comp.update_traces(textposition="outside")
 st.plotly_chart(fig_comp, use_container_width=True)
+
 st.caption(
     "Las barras muestran la diferencia porcentual respecto a la media "
     "de los demás clientes del segmento (excluyendo este cliente). "
     "Verde = por encima · Rojo = por debajo. No implica necesariamente mejor o peor."
 )
+
+# Percentiles dentro del segmento
+st.markdown("**Posición dentro del segmento:**")
+pct_cols = st.columns(len(comp_rows))
+for col, row in zip(pct_cols, comp_rows):
+    col.metric(row["Variable"], f"Percentil {row['Percentil']}")
 
 st.divider()
 
@@ -169,17 +203,15 @@ percentil    = float((df["cltv"] < cltv_cliente).sum() / len(df) * 100)
 
 st.markdown(
     f"Este cliente está en el **percentil {percentil:.0f}** "
-    f"de la distribución global de CLTV ({fmt_eur(cltv_cliente)})."
+    f"de la distribución global de valor ({fmt_eur(cltv_cliente)})."
 )
 
 if cltv_cliente <= 0:
     st.warning(
-        "Este cliente tiene CLTV ≤ 0 (devoluciones superiores al margen bruto). "
+        "Este cliente tiene valor ≤ 0 (devoluciones superiores al margen bruto). "
         "La posición en el histograma no es representativa en escala logarítmica."
     )
 else:
-    # Pre-computar log10 en numpy: evita todos los bugs de Plotly con ejes log
-    # (go.Histogram con Decimal/NUMERIC + add_vline en log-scale expande el rango).
     cltv_vals  = df[df["cltv"] > 0]["cltv"].astype(float).values
     log_vals   = np.log10(cltv_vals)
     log_client = float(np.log10(cltv_cliente))
@@ -194,10 +226,9 @@ else:
         hovertemplate="Clientes: %{y}<extra></extra>",
     ))
 
-    # Eje X lineal sobre valores log10; ticks muestran los valores originales.
     ticks_orig = [1, 10, 100, 1_000, 10_000, 100_000]
     fig_mini.update_xaxes(
-        title="CLTV (€)",
+        title="Valor del cliente (€)",
         tickvals=[np.log10(v) for v in ticks_orig],
         ticktext=["1", "10", "100", "1k", "10k", "100k"],
     )

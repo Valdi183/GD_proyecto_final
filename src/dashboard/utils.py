@@ -78,10 +78,69 @@ def get_engine() -> Engine:
 
 # ── Datos ─────────────────────────────────────────────────────────────────────
 
+
 @st.cache_data(ttl=600)
-def load_data() -> pd.DataFrame:
-    """Carga marts.customer_360 completo. Cacheado 10 min por sesión."""
+def load_data(sql: str | None = None) -> pd.DataFrame:
+    """Carga datos desde la BD. Sin argumento → marts.customer_360 completo."""
+    engine = get_engine()
+    query = sql if sql is not None else "SELECT * FROM marts.customer_360"
+    with engine.connect() as conn:
+        df = pd.read_sql(query, conn)
+    return df
+
+
+# ── Helpers adicionales ───────────────────────────────────────────────────────
+
+@st.cache_data(ttl=3600)
+def get_volumenes_dwh() -> dict:
+    """Devuelve dict {nombre_tabla: n_filas} de las tablas de dwh y marts."""
     engine = get_engine()
     with engine.connect() as conn:
-        df = pd.read_sql("SELECT * FROM marts.customer_360", conn)
+        df = pd.read_sql(
+            """
+            SELECT schemaname || '.' || relname AS tabla,
+                   n_live_tup::BIGINT           AS n_filas
+            FROM   pg_stat_user_tables
+            WHERE  schemaname IN ('dwh', 'marts')
+            ORDER  BY schemaname, relname
+            """,
+            conn,
+        )
+    return dict(zip(df["tabla"], df["n_filas"]))
+
+
+@st.cache_data(ttl=3600)
+def get_rango_fechas() -> tuple:
+    """Devuelve (min_date, max_date) del rango de ventas."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = pd.read_sql(
+            """
+            SELECT MIN(df.fecha) AS min_date,
+                   MAX(df.fecha) AS max_date
+            FROM   dwh.fact_ventas fv
+            JOIN   dwh.dim_fecha df ON df.date_id = fv.date_id
+            """,
+            conn,
+        ).iloc[0]
+    return row["min_date"], row["max_date"]
+
+
+@st.cache_data(ttl=3600)
+def get_ventas_por_anio() -> pd.DataFrame:
+    """Devuelve DataFrame [anio, n_ventas, ingresos] agrupado por año."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        df = pd.read_sql(
+            """
+            SELECT df.anio                     AS anio,
+                   COUNT(DISTINCT fv.sale_id)  AS n_ventas,
+                   SUM(fv.subtotal)            AS ingresos
+            FROM   dwh.fact_ventas fv
+            JOIN   dwh.dim_fecha df ON df.date_id = fv.date_id
+            GROUP  BY df.anio
+            ORDER  BY df.anio
+            """,
+            conn,
+        )
     return df

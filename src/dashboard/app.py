@@ -174,3 +174,36 @@ fig_dist.update_layout(
 )
 fig_dist.update_traces(textposition="outside")
 st.plotly_chart(fig_dist, use_container_width=True)
+
+st.divider()
+
+# ── Segunda fila de KPIs financieros ─────────────────────────────────────────
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Ingresos totales",   "9.341.505,20 €")
+col2.metric("Margen bruto",       "3.779.316,80 €")
+col3.metric("Tasa de devolución", "2,9%")
+col4.metric("Ticket medio",       "227,20 €")
+
+st.divider()
+
+# ── Estado del negocio ────────────────────────────────────────────────────────
+st.subheader("Estado del negocio")
+st.success(
+    "✅ Base de clientes recurrentes sólida — "
+    "el 13% de clientes genera el 91% del valor."
+)
+st.warning(
+    "⚠️ Alta concentración en segmento premium — "
+    "riesgo de dependencia en 750 clientes."
+)
+st.info(
+    "ℹ️ Tasa de devolución del 2,9% — dentro de "
+    "parámetros normales para retail de salud."
+)
+
+st.divider()
+st.caption(
+    "Análisis sobre 5.750 clientes activos · "
+    "Periodo 2020-2026 · 50 productos · "
+    "20 tiendas en Madrid"
+)

@@ -1,5 +1,6 @@
 """
-2_Analisis_CLTV.py — Página 2: Distribución y concentración del valor del cliente.
+3_Analisis_CLTV.py — Página 3: Distribución y concentración del valor del cliente.
+(Renombrado desde 2_Analisis_CLTV.py)
 """
 
 import sys
@@ -79,7 +80,6 @@ st.divider()
 # ── S2: Curva de Lorenz ───────────────────────────────────────────────────────
 st.subheader("Concentración del valor — Curva de Lorenz")
 
-# Lorenz se calcula sobre clientes con CLTV > 0 (negatives distorsionan la curva).
 cltv_sorted = df_pos["cltv"].sort_values().values
 n           = len(cltv_sorted)
 cumsum      = np.cumsum(cltv_sorted)
@@ -93,9 +93,6 @@ area = 0.5 * np.sum(
 )
 gini = float(1 - 2 * area)
 
-# Puntos Pareto: top X% genera target_pct% del CLTV.
-# "Top X% genera Y%" ↔ "bottom (100-X)% tiene (100-Y)%"
-# → buscar donde lorenz_y cruza (1 - Y/100).
 pareto_targets = [(50, 0.50), (80, 0.20)]
 pareto_points  = []
 for value_pct, threshold in pareto_targets:
